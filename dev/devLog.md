@@ -27,9 +27,16 @@ ok nice, so we can loop over the canvas width and skip certain pixels
 ideally this should work, let's see
 
 well it did work 
-![image named something](first_grid.png)
+![firstGrid](first_grid.png)
 
 finally found the reason, I being genius I am forgot to add canvas height and width I though everything is working since i gave it 100% but that's not how it works.
 ok now let's get back to this shit
 and look at the genius me, I have finally done the grid and it took only 3 hour, yeah not that impressive I know but it fucking worked 
+![secondGrid](second_grid.png)
 will start next step after commit.
+
+2. now for the second step I think we should try to add price axis
+let do some shit where we have 100 to 200 range and we show 10 horizontal line with 110 120 130...
+well that was easy just declared the price range, defined the grid with and added step size
+I think the main complexity will be when we have dynamic infinite scroll
+

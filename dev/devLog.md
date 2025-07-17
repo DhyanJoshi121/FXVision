@@ -84,3 +84,81 @@ ok there were still some if condition problems but it works now
 ![infinite_grid](infinite_grid.png)
 
 on next episode we will start with zoom in and out baby
+
+ok I am back let's get started
+
+4. let's start with zoom
+first let's add some comments to properly formate and identify blocks of logics.
+ok after doing some research found that there is something called delta and based on that we can decide zoom in and out factors and also find out that we don't have to count offset every time event.nativeEvent.offsetX is provided to us already. so now we just have to calculate timeAtCursor and priceAtCursor, and we do that by dividing current offset by width and then multiply it by range,
+
+ok finally got the zoom in and out done for the time but it was too difficult so i will write whole calculation here in case I forget in future, though my code is already self explanatory.
+
+```JavaScript
+
+    // simple get grid width
+    const gridWidth = canvas.width - priceAxisWidth;
+    const gridHeight = canvas.height - timeAxisHeight;
+    
+    // get where the x and y are from the (0,0)
+    const x = e.nativeEvent.offsetX;
+    const y = e.nativeEvent.offsetY;
+
+    // if delta is plus means we are scrolling forward and that mean increase zoom by 10% which is 1.1
+    const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+
+    // get classic time range
+    const timeRange = maxTime - minTime;
+    const priceRange = maxPrice - minPrice;
+
+    /*
+        we divide x / gridWidth to get pixel point and then multiply it with timeRange to check time at cursor
+        x = 50px offset from x=0
+        gridWidth = 100px
+        we get  x / gridWidth = 0.5 which means we are at 50% in our time range
+        now multiply 0.5 * 200 = 100 
+    */
+    const timeAtCursor = (x / gridWidth) * timeRange;
+    const priceAtCursor = (y / gridHeight) * priceRange;
+
+    // variable names explain themselves
+    const timeCursorToStart = timeAtCursor - minTime;
+    const timeCursorToEnd = maxTime - timeAtCursor;
+    const newMinDistance = timeCursorToStart * zoomFactor;
+    const newMaxDistance = timeCursorToEnd * zoomFactor;
+
+    setMinTime(timeAtCursor - newMinDistance);
+    setMaxTime(timeAtCursor + newMaxDistance);
+
+```
+
+ok so for now I have implemented zoom for time only and now we will move on to next step
+
+5. Get candles data and store it in localStorage
+it's simple nothing complicated just call the twelveData api and get 5000, 30 min candles
+
+6. ok so next we have to draw this candle data into our chart
+we already have almost all logic to know where everything should be just have to calculate the range 
+
+fuckkkkkkkkkkkkkkkkkkkkkkkkk....
+all the process gone, why? because i tried to do some fancy macro and executed it and each line was messed up, undo - well "we are already at the oldest change"
+
+it's oks lets start again what else can we do, so I think I started with comments so let's do that again
+
+so we are back and now we are setting range dynamically from fetching data but nothing is showing up and reason is fucking price step and timeStep, they need to be dynamically calculated
+
+ok now I think I need to speed up things as I don't have lot time, so I won't be writing too much here
+
+so I just implemented dynamic step calculations for price and time
+for time it was easy, I defined array of interval, calculated rough step and pick the nearest time interval as step
+but for price, man that was tough. I had to so many things like first had to learn log10, I didn't even know we can use them like this to calculate magnitude and residual,
+Now I have used AI for price step calculation because it was something I have never done and it's not that I did not try but I was just going in completely in wrong direction.
+if price were normal int maybe some division and multiplication would have been enough, but in forex market everything is in 0.00050 and I didn't know how can I find nice steps their,
+so here is the magic methods, log10 and pow, yup so first you get rough step put it in log10 to get logarithmic value, than we floor it to nearest whole number and then we get pow(10, wholeNumber),
+that whole process gives us magnitude and then we can get residual roughStep / magnitude, which will tell us how much larger our roughStep is compare to magnitude and based on difference we can multiply magnitude with nice readable numbers like 1,2,4,5.
+
+wait wait wait, I forgot to implement dynamic range with time, fuck.
+
+ok so now we have zoom in and out, we have candle showing on the chart, we have dynamic ranges based on  data.
+great now we need to implement dragging on axis which will allow us to zoom only that scale and we will also need crosshair with extended line in all direction.
+
+and yeah lots of zoom logic needed to be changed but now it make sense, because before I was just seeing if number changes or not after adding candles I realized we got some fucked up logic in that zoom function.

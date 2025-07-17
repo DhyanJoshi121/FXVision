@@ -10,7 +10,7 @@ export const theme: themeType = {
     axisLabelBackground: '#2a2e39',
 };
 
-export const priceAxisWidth = 50;
+export const priceAxisWidth = 60;
 export const timeAxisHeight = 50;
 
 export const ONE_MINUTE = 1000 * 60;

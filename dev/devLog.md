@@ -140,7 +140,7 @@ it's simple nothing complicated just call the twelveData api and get 5000, 30 mi
 we already have almost all logic to know where everything should be just have to calculate the range 
 
 fuckkkkkkkkkkkkkkkkkkkkkkkkk....
-all the process gone, why? because i tried to do some fancy macro and executed it and each line was messed up, undo - well "we are already at the oldest change"
+all the process gone, why? because i tried to do some fancy vim macro and executed it and each line was messed up, undo - well "we are already at the oldest change"
 
 it's oks lets start again what else can we do, so I think I started with comments so let's do that again
 
@@ -162,3 +162,20 @@ ok so now we have zoom in and out, we have candle showing on the chart, we have 
 great now we need to implement dragging on axis which will allow us to zoom only that scale and we will also need crosshair with extended line in all direction.
 
 and yeah lots of zoom logic needed to be changed but now it make sense, because before I was just seeing if number changes or not after adding candles I realized we got some fucked up logic in that zoom function.
+
+
+
+
+
+
+
+WELL FUCK I JUST REALIZE THAT ALL THE WORK I HAVE DONE IS ALMOST NOT USEFUL WHY? BECAUSE ALL THE MOVE AND ZOOM LOGIC ARE FOR PC, SO IF YOU TRY TO MOVE CHART ON YOUR FUCKING MOBILE IT WON'T WORK AND IF THAT WAS ALL I WOULD UNDERSTAND BUT LAPTOP'S TOUCHPAD IS NOT WORKING FOR PINCH ZOOM OR ZOOM OUT, FUCKING HELL, WHY I COULDN'T FIND THIS BEFORE ALL THE LOGIC ALL THE CALCULATION... FUCK FUCK FUCK.
+
+fuck it i don't care, let's finish the main concept of the project then we will optimize and make it better, I will just add popup to show that only use mouse 
+
+
+
+7. let's add cross hair first
+crosshair added , scaling added for price and time axis
+
+now not being able to use touchpad of laptop for even normal movements is crazy, but it is also not the target user, so I will just let the AI do it's thing , I can't be bothered to do all those calculations for pointers

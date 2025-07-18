@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type WheelEvent } from "react"
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type TouchEvent, type WheelEvent } from "react"
 import { ONE_DAY, ONE_HOUR, ONE_MINUTE, priceAxisWidth, theme, timeAxisHeight } from "./variables";
 import type { candleData } from "./types";
 import { rawData } from "./data";
@@ -55,11 +55,22 @@ const Chart = () => {
     setMaxTime(Number(new Date(candleData[0].datetime).getTime()));
     setMinTime(Number(new Date(candleData[candleData.length - 1].datetime).getTime()));
 
-    window.addEventListener("mouseup",onMouseUp);
+    // Use pointer events instead of mouse events for better cross-platform support
+    const handlePointerUp = (e: globalThis.PointerEvent) => onPointerUp(e);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
 
-    return ()=>{
-      window.removeEventListener("mouseup",onMouseUp);
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
     };
+
+    // old mouseup events
+    // window.addEventListener("mouseup",onMouseUp);
+
+    // return ()=>{
+    //   window.removeEventListener("mouseup",onMouseUp);
+    // };
 
   },[])
 
@@ -80,6 +91,12 @@ const Chart = () => {
     ctx.lineWidth = 0.5;
     ctx.font = "12px Arial";
     drawGrid(canvas,ctx);
+
+    canvas.addEventListener("wheel", onMouseZoom, { passive: false});
+
+    return ()=>{
+      canvas.removeEventListener("wheel", onMouseZoom); 
+    };
 
   },[minPrice, maxPrice, minTime, maxTime, mouseX, mouseY, showCrosshair])
   // =================================== [ useEffects end ] =================================== 
@@ -282,48 +299,126 @@ const Chart = () => {
 
   // =================================== [ calculate steps end] =================================== 
 
-  // =================================== [ mouse event start ] =================================== 
-  function onMouseDown(e: MouseEvent){
+// =================================== [ Helper functions start ] =================================== 
+  function getDistance(pointer1: { x: number; y: number }, pointer2: { x: number; y: number }): number {
+    const dx = pointer1.x - pointer2.x;
+    const dy = pointer1.y - pointer2.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function getPointerPosition(e: PointerEvent | TouchEvent): { x: number; y: number } {
     const canvas = canvasRef.current;
-
-    if(canvas){
-      const gridWidth = canvas.width - priceAxisWidth;
-      const gridHeight = canvas.height - timeAxisHeight;
-
-      if(e.clientX > gridWidth && e.clientX < canvas.width && e.clientY >= 0 && e.clientY <= gridHeight){
-        setIsPriceScaling(true);
-        setLastY(e.clientY);
-        return;
+    if (!canvas) return { x: 0, y: 0 };
+    
+    const rect = canvas.getBoundingClientRect();
+    
+    if ('touches' in e) {
+      // Touch event
+      const touch = e.touches[0] || e.changedTouches[0];
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
       };
+    } else {
+      // Pointer event
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+  }
+// =================================== [ Helper functions end ] =================================== 
 
-      if(e.clientY > gridHeight && e.clientY < canvas.height && e.clientX >= 0 && e.clientX <= gridWidth){
-        setIsTimeScaling(true);
-        setLastX(e.clientX);
+// =================================== [ Pointer Events start ] =================================== 
+  function onPointerDown(e: PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Capture the pointer
+    e?.pointerId && canvas.setPointerCapture(e.pointerId);
+
+    const pos = getPointerPosition(e);
+    const gridWidth = canvas.width - priceAxisWidth;
+    const gridHeight = canvas.height - timeAxisHeight;
+
+    // Add pointer to active pointers
+    setActivePointers(prev => new Map(prev).set(e.pointerId, pos));
+
+    // Check if we're in scaling zones (price axis or time axis)
+    if (pos.x > gridWidth && pos.x < canvas.width && pos.y >= 0 && pos.y <= gridHeight) {
+      setIsPriceScaling(true);
+      setLastY(pos.y);
+      return;
+    }
+
+    if (pos.y > gridHeight && pos.y < canvas.height && pos.x >= 0 && pos.x <= gridWidth) {
+      setIsTimeScaling(true);
+      setLastX(pos.x);
+      return;
+    }
+
+    // For single pointer, start dragging
+    if (activePointers.size === 0) {
+      setLastX(pos.x);
+      setLastY(pos.y);
+      setIsDragging(true);
+    }
+  }
+
+  function onPointerMove(e: PointerEvent) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const pos = getPointerPosition(e);
+    setMouseX(pos.x);
+    setMouseY(pos.y);
+
+    if (!minPrice || !maxPrice || !minTime || !maxTime) return;
+
+    // Update active pointer position
+    const newActivePointers = new Map(activePointers);
+    if (newActivePointers.has(e.pointerId)) {
+      newActivePointers.set(e.pointerId, pos);
+      setActivePointers(newActivePointers);
+        console.log('hi1');
+    }
+
+    // Handle pinch zoom with two pointers
+    if (newActivePointers.size === 2) {
+      const pointers = Array.from(newActivePointers.values());
+      const currentDistance = getDistance(pointers[0], pointers[1]);
+        console.log('hi2');
+      
+      if (initialPinchDistance === null) {
+        setInitialPinchDistance(currentDistance);
+        setInitialTimeRange(maxTime - minTime);
+        setInitialPriceRange(maxPrice - minPrice);
+        console.log('hi3');
         return;
       }
 
+      const scaleChange = currentDistance / initialPinchDistance;
+      console.log("scaleChange",scaleChange);
+      
+      if (initialTimeRange && initialPriceRange) {
+        console.log('hi4');
+        const newTimeRange = initialTimeRange / scaleChange;
+        const newPriceRange = initialPriceRange / scaleChange;
+        
+        const centerTime = (maxTime + minTime) / 2;
+        const centerPrice = (maxPrice + minPrice) / 2;
+        
+        setMinTime(centerTime - newTimeRange / 2);
+        setMaxTime(centerTime + newTimeRange / 2);
+        setMinPrice(centerPrice - newPriceRange / 2);
+        setMaxPrice(centerPrice + newPriceRange / 2);
+      }
+      return;
     }
 
-    setLastX(e.clientX);
-    setLastY(e.clientY);
-    setIsDragging(true);
-  }
-
-  function onMouseMove(e: MouseEvent){
-    const canvas = canvasRef.current;
-
-    if(!canvas)return;
-
-    const x = e.clientX;
-    const y = e.clientY;
-
-    setMouseX(x);
-    setMouseY(y)
-
-    if(!minPrice || !maxPrice || !minTime || !maxTime) return;
-
-    if(isPriceScaling){
-      const distanceMovedY = e.clientY - lastY;
+    // Handle single pointer interactions
+    if (isPriceScaling) {
+      const distanceMovedY = pos.y - lastY;
       const scaleFactor = 1 + distanceMovedY / 600;
 
       const priceRange = maxPrice - minPrice;
@@ -333,12 +428,12 @@ const Chart = () => {
       setMinPrice(centerPrice - newPriceRange / 2);
       setMaxPrice(centerPrice + newPriceRange / 2);
 
-      setLastY(e.clientY);
+      setLastY(pos.y);
       return;
-    };
+    }
 
-    if(isTimeScaling){
-      const distanceMovedX = e.clientX - lastX;
+    if (isTimeScaling) {
+      const distanceMovedX = pos.x - lastX;
       const scaleFactor = 1 + distanceMovedX / 400;
 
       const timeRange = maxTime - minTime;
@@ -348,17 +443,16 @@ const Chart = () => {
       setMinTime(centerTime - newTimeRange / 2);
       setMaxTime(centerTime + newTimeRange / 2);
 
-      setLastX(e.clientX);
+      setLastX(pos.x);
       return;
     }
 
-    if(!isDragging)return;
+    if (!isDragging) return;
 
-    const distanceMovedX = e.clientX - lastX;
-    const distanceMovedY = e.clientY - lastY;
+    const distanceMovedX = pos.x - lastX;
+    const distanceMovedY = pos.y - lastY;
 
-
-    const newTimeRange =  maxTime - minTime;
+    const newTimeRange = maxTime - minTime;
     const newPriceRange = maxPrice - minPrice;
     const gridWidth = canvas.width - priceAxisWidth;
     const gridHeight = canvas.height - timeAxisHeight;
@@ -368,79 +462,281 @@ const Chart = () => {
 
     const timeMoved = distanceMovedX * timePerPixel;
     const priceMoved = distanceMovedY * pricePerPixel;
-    
+
     setMinTime(prev => prev! - timeMoved);
     setMaxTime(prev => prev! - timeMoved);
     setMinPrice(prev => prev! + priceMoved);
     setMaxPrice(prev => prev! + priceMoved);
 
-    setLastX(e.clientX);
-    setLastY(e.clientY);
-
+    setLastX(pos.x);
+    setLastY(pos.y);
   }
 
-  function onMouseUp(e: globalThis.MouseEvent){
-    setLastX(0);
-    setLastY(0);
-    setIsDragging(false);
-    setIsPriceScaling(false);
-    setIsTimeScaling(false);
-  }
-
-  function onMouseZoom(e: WheelEvent){
-    if(!minPrice || !maxPrice || !minTime || !maxTime) return;
+  function onPointerUp(e: PointerEvent<HTMLCanvasElement> | globalThis.PointerEvent) {
     const canvas = canvasRef.current;
-    if(!canvas)return;
-    const gridWidth = canvas.width - priceAxisWidth;
-    // const gridHeight = canvas.height - timeAxisHeight;
-    
-    const x = e.nativeEvent.offsetX;
-    // const y = e.nativeEvent.offsetY;
+    if (canvas && 'pointerId' in e) {
+      canvas.releasePointerCapture(e.pointerId);
+    }
 
-    const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+    // Remove pointer from active pointers
+    setActivePointers(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(e.pointerId);
+      return newMap;
+    });
+
+    // Reset states when no more active pointers
+    if (activePointers.size <= 1) {
+      setLastX(0);
+      setLastY(0);
+      setIsDragging(false);
+      setIsPriceScaling(false);
+      setIsTimeScaling(false);
+      setInitialPinchDistance(null);
+      setInitialTimeRange(null);
+      setInitialPriceRange(null);
+    }
+  };
+  // =================================== [ Pointer Events end ] =================================== 
+
+  // =================================== [ Touch Events Start] =================================== 
+  function onTouchStart(e: TouchEvent<HTMLCanvasElement>) {
+    e.preventDefault(); // Prevent default touch behavior
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const touch = e.touches[0];
+    const pos = getPointerPosition(e);
+    const gridWidth = canvas.width - priceAxisWidth;
+    const gridHeight = canvas.height - timeAxisHeight;
+
+    // Handle multi-touch
+    if (e.touches.length === 2) {
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const rect = canvas.getBoundingClientRect();
+      
+      const pos1 = { x: touch1.clientX - rect.left, y: touch1.clientY - rect.top };
+      const pos2 = { x: touch2.clientX - rect.left, y: touch2.clientY - rect.top };
+      
+      setInitialPinchDistance(getDistance(pos1, pos2));
+      setInitialTimeRange(maxTime! - minTime!);
+      setInitialPriceRange(maxPrice! - minPrice!);
+      return;
+    }
+
+    // Single touch handling (similar to pointer)
+    if (pos.x > gridWidth && pos.x < canvas.width && pos.y >= 0 && pos.y <= gridHeight) {
+      setIsPriceScaling(true);
+      setLastY(pos.y);
+      return;
+    }
+
+    if (pos.y > gridHeight && pos.y < canvas.height && pos.x >= 0 && pos.x <= gridWidth) {
+      setIsTimeScaling(true);
+      setLastX(pos.x);
+      return;
+    }
+
+    setLastX(pos.x);
+    setLastY(pos.y);
+    setIsDragging(true);
+  }
+
+  function onTouchMove(e: TouchEvent<HTMLCanvasElement>) {
+    e.preventDefault();
+    
+    if (!minPrice || !maxPrice || !minTime || !maxTime) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Handle pinch zoom
+    if (e.touches.length === 2) {
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const rect = canvas.getBoundingClientRect();
+      
+      const pos1 = { x: touch1.clientX - rect.left, y: touch1.clientY - rect.top };
+      const pos2 = { x: touch2.clientX - rect.left, y: touch2.clientY - rect.top };
+      
+      const currentDistance = getDistance(pos1, pos2);
+      
+      if (initialPinchDistance && initialTimeRange && initialPriceRange) {
+        const scaleChange = currentDistance / initialPinchDistance;
+        
+        const newTimeRange = initialTimeRange / scaleChange;
+        const newPriceRange = initialPriceRange / scaleChange;
+        
+        const centerTime = (maxTime + minTime) / 2;
+        const centerPrice = (maxPrice + minPrice) / 2;
+        
+        setMinTime(centerTime - newTimeRange / 2);
+        setMaxTime(centerTime + newTimeRange / 2);
+        setMinPrice(centerPrice - newPriceRange / 2);
+        setMaxPrice(centerPrice + newPriceRange / 2);
+      }
+      return;
+    }
+
+    // Single touch movement
+    const pos = getPointerPosition(e);
+    setMouseX(pos.x);
+    setMouseY(pos.y);
+
+    if (isPriceScaling) {
+      const distanceMovedY = pos.y - lastY;
+      const scaleFactor = 1 + distanceMovedY / 600;
+
+      const priceRange = maxPrice - minPrice;
+      const centerPrice = (maxPrice + minPrice) / 2;
+      const newPriceRange = priceRange * scaleFactor;
+
+      setMinPrice(centerPrice - newPriceRange / 2);
+      setMaxPrice(centerPrice + newPriceRange / 2);
+
+      setLastY(pos.y);
+      return;
+    }
+
+    if (isTimeScaling) {
+      const distanceMovedX = pos.x - lastX;
+      const scaleFactor = 1 + distanceMovedX / 400;
+
+      const timeRange = maxTime - minTime;
+      const centerTime = (maxTime + minTime) / 2;
+      const newTimeRange = timeRange * scaleFactor;
+
+      setMinTime(centerTime - newTimeRange / 2);
+      setMaxTime(centerTime + newTimeRange / 2);
+
+      setLastX(pos.x);
+      return;
+    }
+
+    if (!isDragging) return;
+
+    const distanceMovedX = pos.x - lastX;
+    const distanceMovedY = pos.y - lastY;
+
+    const newTimeRange = maxTime - minTime;
+    const newPriceRange = maxPrice - minPrice;
+    const gridWidth = canvas.width - priceAxisWidth;
+    const gridHeight = canvas.height - timeAxisHeight;
+
+    const timePerPixel = newTimeRange / gridWidth;
+    const pricePerPixel = newPriceRange / gridHeight;
+
+    const timeMoved = distanceMovedX * timePerPixel;
+    const priceMoved = distanceMovedY * pricePerPixel;
+
+    setMinTime(prev => prev! - timeMoved);
+    setMaxTime(prev => prev! - timeMoved);
+    setMinPrice(prev => prev! + priceMoved);
+    setMaxPrice(prev => prev! + priceMoved);
+
+    setLastX(pos.x);
+    setLastY(pos.y);
+  }
+
+  function onTouchEnd(e: TouchEvent<HTMLCanvasElement>) {
+    e.preventDefault();
+    
+    if (e.touches.length === 0) {
+      setLastX(0);
+      setLastY(0);
+      setIsDragging(false);
+      setIsPriceScaling(false);
+      setIsTimeScaling(false);
+      setInitialPinchDistance(null);
+      setInitialTimeRange(null);
+      setInitialPriceRange(null);
+    }
+  }
+  // =================================== [ Touch Events end] =================================== 
+
+  // =================================== [ Legacy mouse events for desktop start] =================================== 
+  function onMouseDown(e: MouseEvent) {
+    // Convert to pointer-like event
+    const pointerEvent = {
+      pointerId: -1, // Use -1 for mouse
+      clientX: e.clientX,
+      clientY: e.clientY,
+      preventDefault: e.preventDefault.bind(e)
+    } as PointerEvent<HTMLCanvasElement>;
+    
+    onPointerDown(pointerEvent);
+  }
+
+  function onMouseMove(e: MouseEvent) {
+    const pointerEvent = {
+      pointerId: -1,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      preventDefault: e.preventDefault.bind(e)
+    } as PointerEvent;
+    
+    onPointerMove(pointerEvent);
+  }
+
+  function onMouseZoom(e: globalThis.WheelEvent) {
+    let zoomFactor:number;
+    if(e.ctrlKey){
+      e.preventDefault();
+      zoomFactor = e.deltaY > 0 ? 1.02 : 0.98;
+    }else {
+      zoomFactor = e.deltaY > 0 ? 1.08 : 0.92;
+    }
+
+    if (!minPrice || !maxPrice || !minTime || !maxTime) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const gridWidth = canvas.width - priceAxisWidth;
+
+    const x = e.offsetX;
 
     const timeRange = maxTime - minTime;
-    // const priceRange = maxPrice - minPrice;
-
     const timeAtCursor = minTime + (x / gridWidth) * timeRange;
-    const timeRatio = (timeAtCursor - minTime) / timeRange; 
+    const timeRatio = (timeAtCursor - minTime) / timeRange;
 
-    // const priceAtCursor = minPrice - ((gridHeight - y) / gridHeight) * priceRange;
-    // const priceRatio = (priceAtCursor - minPrice) / priceRange;
-
-    const newTimeRange = timeRange * zoomFactor; 
-    // const newPriceRange = priceRange * priceZoomFactor;
+    const newTimeRange = timeRange * zoomFactor;
 
     setMinTime(timeAtCursor - (newTimeRange * timeRatio));
     setMaxTime(timeAtCursor + (newTimeRange * (1 - timeRatio)));
-
-    // setMinPrice(priceAtCursor - (newPriceRange * priceRatio));
-    // setMaxPrice(priceAtCursor + (newPriceRange * (1 - priceRatio)));
-
   }
 
-  function onMouseEnter(){
+  function onMouseEnter() {
     setShowCrosshair(true);
-  };
+  }
 
-  function onMouseLeave(){
+  function onMouseLeave() {
     setShowCrosshair(false);
     setMouseX(null);
     setMouseY(null);
-  };
+  }
+  // =================================== [ Legacy mouse events for desktop end ] =================================== 
 
-  // =================================== [ mouse event end ] =================================== 
+
   return (
-    <div className="w-[100vw] h-[100vh] overflow-hidden p-5">
+    <div className="w-[100vw] h-[100vh] overflow-hidden p-5" style={{touchAction: "none"}}>
         <canvas
           className={`w-full h-full block border-2 cursor-crosshair ${isDragging && "cursor-grabbing"} ${isPriceScaling && "cursor-ns-resize"} ${isTimeScaling && "cursor-ew-resize"}`}
           ref={canvasRef}
+          // Pointer events (modern, works on all devices)
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          // Touch events (for better mobile support)
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          // Mouse events (legacy desktop support)
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
-          onWheel={onMouseZoom}
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
-          // TODO: add pointer pinch zoom handler when we have time
+          style={{ touchAction: 'none' }} 
         ></canvas>
     </div>
 

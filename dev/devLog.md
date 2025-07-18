@@ -179,3 +179,4 @@ fuck it i don't care, let's finish the main concept of the project then we will 
 crosshair added , scaling added for price and time axis
 
 now not being able to use touchpad of laptop for even normal movements is crazy, but it is also not the target user, so I will just let the AI do it's thing , I can't be bothered to do all those calculations for pointers
+ok so after some magic from AI we have working movements for all devices though view resize logic is yet to be implemented but for now this is good, now I should probably start with some drawing stuff.
